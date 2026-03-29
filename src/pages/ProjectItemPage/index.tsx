@@ -20,7 +20,6 @@ import {
     type Task,
     type TaskStatus,
     type TaskComment,
-    type TaskLocation,
     useProjectStore,
 } from '../../shared/stores/projectStore.ts';
 import * as React from "react";
@@ -218,7 +217,6 @@ export default function ProjectItemPage() {
     const isOwner = project?.role === 'owner';
     const isAdmin = project?.role === 'admin';
     const canManageMembers = isOwner || isAdmin;
-    const canManageProject = isOwner || isAdmin;
 
     const handleToggleUserToAdd = (userId: string) => {
         setSelectedUserIdsToAdd((prev) =>
