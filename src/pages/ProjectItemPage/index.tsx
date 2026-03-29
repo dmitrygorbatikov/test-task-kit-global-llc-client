@@ -513,16 +513,17 @@ export default function ProjectItemPage() {
     };
 
     const buildTaskLocationPayload = (location: TaskLocationForm) => {
-        const lat = Number(location.lat.trim());
-        const lng = Number(location.lng.trim());
+        const latRaw = location.lat.trim();
+        const lngRaw = location.lng.trim();
+
+        if (!latRaw && !lngRaw) return null;
+
+        const lat = Number(latRaw);
+        const lng = Number(lngRaw);
 
         if (
             Number.isNaN(lat) ||
-            Number.isNaN(lng) ||
-            lat < -90 ||
-            lat > 90 ||
-            lng < -180 ||
-            lng > 180
+            Number.isNaN(lng)
         ) {
             return null;
         }
