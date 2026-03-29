@@ -191,6 +191,8 @@ export default function ProjectItemPage() {
     const [newComment, setNewComment] = useState('');
     const [replyToCommentId, setReplyToCommentId] = useState<string | null>(null);
     const [submittingComment, setSubmittingComment] = useState(false);
+    const [taskSearch, setTaskSearch] = useState('');
+    const [debouncedTaskSearch, setDebouncedTaskSearch] = useState('');
 
     const assigneeListRef = useRef<HTMLDivElement | null>(null);
     const editAssigneeListRef = useRef<HTMLDivElement | null>(null);
@@ -320,19 +322,42 @@ export default function ProjectItemPage() {
         ]);
     };
 
-    const reloadAllColumnsForCurrentTab = async () => {
+    const reloadAllColumnsForCurrentTab = async (
+        statusesOverride?: TaskStatus[],
+        searchOverride?: string,
+    ) => {
         if (!projectId || projectColumns.length === 0) return;
+
+        const nextStatuses = statusesOverride ?? activeStatuses;
+        const nextSearch = searchOverride ?? debouncedTaskSearch;
 
         await Promise.all(
             projectColumns.map((column) =>
                 loadColumnTasks(projectId, column._id, {
                     limit: 20,
                     reset: true,
-                    statuses: activeStatuses,
+                    statuses: nextStatuses,
+                    search: nextSearch,
                 }),
             ),
         );
     };
+
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            setDebouncedTaskSearch(taskSearch.trim());
+        }, 400);
+
+        return () => clearTimeout(timeout);
+    }, [taskSearch]);
+
+    useEffect(() => {
+        if (!projectId || projectColumns.length === 0) return;
+
+        reloadAllColumnsForCurrentTab(undefined, debouncedTaskSearch).catch((err) => {
+            console.error('Failed to search tasks:', err);
+        });
+    }, [debouncedTaskSearch, projectId, projectColumns.length]);
 
     const startProjectTitleEdit = () => {
         setProjectTitleDraft(project?.title ?? '');
@@ -988,15 +1013,7 @@ export default function ProjectItemPage() {
         const statuses = TAB_TO_STATUSES[tab];
 
         try {
-            await Promise.all(
-                projectColumns.map((column) =>
-                    loadColumnTasks(projectId, column._id, {
-                        limit: 20,
-                        reset: true,
-                        statuses,
-                    }),
-                ),
-            );
+            await reloadAllColumnsForCurrentTab(statuses, debouncedTaskSearch);
         } catch (err) {
             console.error('Failed to switch task status tab:', err);
         }
@@ -1129,6 +1146,7 @@ export default function ProjectItemPage() {
                 limit: columnState.meta?.limit ?? 20,
                 reset: false,
                 statuses: activeStatuses,
+                search: debouncedTaskSearch,
             });
         } catch (err) {
             console.error(`Failed to load more tasks for column ${columnId}:`, err);
@@ -1410,12 +1428,13 @@ export default function ProjectItemPage() {
                     limit: 20,
                     reset: true,
                     statuses: activeStatuses,
+                    search: debouncedTaskSearch,
                 }).catch((err) => {
                     console.error(`Failed to load tasks for column ${column._id}:`, err);
                 });
             }
         });
-    }, [projectId, projectColumns, activeStatuses]);
+    }, [projectId, projectColumns, activeStatuses, debouncedTaskSearch]);
 
     useEffect(() => {
         const handleClickOutside = () => {
@@ -1469,7 +1488,7 @@ export default function ProjectItemPage() {
     }) => (
         <div className="relative">
             <label className="block text-sm font-medium text-slate-700 mb-1">
-                Исполнители
+                Assigned to
             </label>
 
             <button
@@ -1499,7 +1518,7 @@ export default function ProjectItemPage() {
                         ))}
                     </div>
                 ) : (
-                    <span className="text-slate-400">Выбрать исполнителей</span>
+                    <span className="text-slate-400">Select members assign to</span>
                 )}
             </button>
 
@@ -1523,10 +1542,10 @@ export default function ProjectItemPage() {
                         className="max-h-64 overflow-y-auto p-2"
                     >
                         {assigneeOptionsLoading ? (
-                            <div className="px-3 py-4 text-sm text-slate-500">Загрузка...</div>
+                            <div className="px-3 py-4 text-sm text-slate-500">Loading...</div>
                         ) : assigneeOptions.length === 0 ? (
                             <div className="px-3 py-4 text-sm text-slate-500">
-                                Ничего не найдено
+                                Nothing not found
                             </div>
                         ) : (
                             <>
@@ -1566,7 +1585,7 @@ export default function ProjectItemPage() {
 
                                 {assigneeOptionsLoadingMore && (
                                     <div className="px-3 py-3 text-sm text-slate-500">
-                                        Загрузка ещё...
+                                        Loading more...
                                     </div>
                                 )}
                             </>
@@ -1579,7 +1598,7 @@ export default function ProjectItemPage() {
                                 <div className="text-xs text-red-600">{assigneeOptionsError}</div>
                             ) : (
                                 <div className="text-xs text-slate-500">
-                                    Показано {assigneeOptions.length} из{' '}
+                                    Showed {assigneeOptions.length} from{' '}
                                     {assigneeOptionsMeta?.total ?? assigneeOptions.length}
                                 </div>
                             )}
@@ -1592,7 +1611,7 @@ export default function ProjectItemPage() {
                             onClick={onClear}
                             className="text-sm text-slate-500 hover:text-slate-700"
                         >
-                            Очистить
+                            Clear
                         </button>
 
                         <button
@@ -1600,7 +1619,7 @@ export default function ProjectItemPage() {
                             onClick={onClose}
                             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-xl"
                         >
-                            Готово
+                            Ok
                         </button>
                     </div>
                 </div>
@@ -1657,7 +1676,7 @@ export default function ProjectItemPage() {
                                         className="w-full max-w-xl px-4 py-2.5 text-2xl font-semibold border border-indigo-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-200"
                                     />
                                     {savingProject && (
-                                        <span className="text-sm text-slate-500">Сохранение...</span>
+                                        <span className="text-sm text-slate-500">Saving...</span>
                                     )}
                                 </div>
                             ) : (
@@ -1665,7 +1684,7 @@ export default function ProjectItemPage() {
                                     <h1
                                         onClick={startProjectTitleEdit}
                                         className="text-2xl font-semibold text-slate-900 truncate cursor-pointer hover:text-indigo-600 transition-colors"
-                                        title="Нажми, чтобы изменить название"
+                                        title="Tap for change title"
                                     >
                                         {project?.title || 'Project'}
                                     </h1>
@@ -1698,7 +1717,7 @@ export default function ProjectItemPage() {
                                             )
                                         }
                                         className="w-full max-w-2xl px-4 py-3 text-sm text-slate-700 border border-indigo-300 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                                        placeholder="Добавь описание проекта"
+                                        placeholder="Add project description"
                                     />
                                 </div>
                             ) : (
@@ -1706,7 +1725,7 @@ export default function ProjectItemPage() {
                                     <p
                                         onClick={startProjectDescriptionEdit}
                                         className="text-slate-500 text-sm max-w-2xl cursor-pointer hover:text-slate-700 transition-colors"
-                                        title="Нажми, чтобы изменить описание"
+                                        title="Tap for change title"
                                     >
                                         {project?.description || 'No description'}
                                     </p>
@@ -1764,8 +1783,18 @@ export default function ProjectItemPage() {
                     </div>
                 )}
 
-                <div className="mb-8">
-                    <div className="inline-flex p-1 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                <div className="mb-8 flex flex-col gap-4">
+                    <div className="max-w-md">
+                        <input
+                            type="text"
+                            value={taskSearch}
+                            onChange={(e) => setTaskSearch(e.target.value)}
+                            placeholder="Search tasks by title, description, labels or assignee"
+                            className="w-full px-4 py-3 bg-white border border-slate-300 rounded-2xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400"
+                        />
+                    </div>
+
+                    <div className="inline-flex p-1 bg-white border border-slate-200 rounded-2xl shadow-sm w-fit">
                         {STATUS_TABS.map((tab) => {
                             const isActive = activeStatusTab === tab.key;
 
@@ -1791,7 +1820,7 @@ export default function ProjectItemPage() {
                     <div>
                         <h2 className="text-2xl font-semibold text-slate-800">Kanban Board</h2>
                         <p className="text-sm text-slate-500 mt-1">
-                            Текущий статус:{' '}
+                            Current status:{' '}
                             {STATUS_TABS.find((tab) => tab.key === activeStatusTab)?.label}
                         </p>
                     </div>
@@ -1802,7 +1831,7 @@ export default function ProjectItemPage() {
                                 type="text"
                                 value={newColumnTitle}
                                 onChange={(e) => setNewColumnTitle(e.target.value)}
-                                placeholder="Название новой колонки"
+                                placeholder="New column title"
                                 className="px-5 py-3 border border-slate-300 rounded-2xl focus:outline-none focus:border-indigo-400 w-80"
                                 autoFocus
                             />
@@ -1812,7 +1841,7 @@ export default function ProjectItemPage() {
                                 disabled={submittingColumn}
                                 className="px-6 py-3 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 font-medium disabled:opacity-60"
                             >
-                                {submittingColumn ? 'Создание...' : 'Создать'}
+                                {submittingColumn ? 'Creating...' : 'Create'}
                             </button>
 
                             <button
@@ -1822,7 +1851,7 @@ export default function ProjectItemPage() {
                                 }}
                                 className="px-6 py-3 text-slate-500 hover:text-slate-700"
                             >
-                                Отмена
+                                Cancel
                             </button>
                         </div>
                     ) : (
@@ -1830,7 +1859,7 @@ export default function ProjectItemPage() {
                             onClick={() => setIsAddingColumn(true)}
                             className="flex items-center gap-2 text-slate-600 hover:text-indigo-600 font-medium transition-colors"
                         >
-                            + Новая колонка
+                            + New column
                         </button>
                     )}
                 </div>
@@ -1893,7 +1922,7 @@ export default function ProjectItemPage() {
                                                             <h3
                                                                 onClick={() => startColumnEdit(col)}
                                                                 className="font-semibold text-xl text-slate-900 truncate cursor-pointer hover:text-indigo-600 transition-colors"
-                                                                title="Нажми, чтобы переименовать колонку"
+                                                                title="Tap for change title"
                                                             >
                                                                 {col.title}
                                                             </h3>
@@ -1936,9 +1965,9 @@ export default function ProjectItemPage() {
 
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => {
+                                                                    onClick={async () => {
                                                                         setOpenColumnMenuId(null);
-                                                                        openCreateTaskModal(col._id);
+                                                                        await openCreateTaskModal(col._id);
                                                                     }}
                                                                     className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
                                                                 >
@@ -1948,9 +1977,9 @@ export default function ProjectItemPage() {
                                                                 {!isBacklog && (
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => {
+                                                                        onClick={async () => {
                                                                             setOpenColumnMenuId(null);
-                                                                            handleDeleteColumn(col);
+                                                                            await handleDeleteColumn(col);
                                                                         }}
                                                                         disabled={isDeleting}
                                                                         className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
@@ -1972,7 +2001,7 @@ export default function ProjectItemPage() {
                                             >
                                                 {columnState?.loading ? (
                                                     <div className="px-3 py-6 text-sm text-slate-500">
-                                                        Загрузка задач...
+                                                        Tasks loading...
                                                     </div>
                                                 ) : columnState?.error ? (
                                                     <div className="mx-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -1980,7 +2009,7 @@ export default function ProjectItemPage() {
                                                     </div>
                                                 ) : col.tasks.length === 0 ? (
                                                     <div className="px-3 py-6 text-sm text-slate-400">
-                                                        В этой колонке пока нет задач
+                                                        No tasks found for this column
                                                     </div>
                                                 ) : null}
 
@@ -2229,7 +2258,7 @@ export default function ProjectItemPage() {
 
                                                 {columnState?.loadingMore && (
                                                     <div className="px-3 py-3 text-sm text-slate-500">
-                                                        Загрузка ещё...
+                                                        Loading more...
                                                     </div>
                                                 )}
                                             </div>
@@ -2253,14 +2282,14 @@ export default function ProjectItemPage() {
                     >
                         <div className="px-8 pt-8 pb-6 border-b">
                             <h2 className="text-2xl font-semibold text-slate-900">
-                                Новая задача
+                                New task
                             </h2>
                         </div>
 
                         <div className="p-8 space-y-6">
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                                    Заголовок
+                                    Title
                                 </label>
                                 <input
                                     type="text"
@@ -2272,13 +2301,13 @@ export default function ProjectItemPage() {
                                         }))
                                     }
                                     className="w-full px-5 py-3 border border-slate-300 rounded-2xl focus:border-indigo-500 focus:outline-none"
-                                    placeholder="Введите название задачи"
+                                    placeholder="Enter task title"
                                 />
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                                    Описание
+                                    Description
                                 </label>
                                 <textarea
                                     value={newTask.description}
@@ -2290,7 +2319,7 @@ export default function ProjectItemPage() {
                                     }
                                     rows={4}
                                     className="w-full px-5 py-3 border border-slate-300 rounded-2xl focus:border-indigo-500 focus:outline-none resize-y"
-                                    placeholder="Подробное описание..."
+                                    placeholder="Enter description..."
                                 />
                             </div>
 
@@ -2368,7 +2397,7 @@ export default function ProjectItemPage() {
                             <div className="grid grid-cols-2 gap-6">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">
-                                        Колонка
+                                        Column
                                     </label>
                                     <select
                                         value={newTask.columnId}
@@ -2390,7 +2419,7 @@ export default function ProjectItemPage() {
 
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">
-                                        Дедлайн
+                                        Deadline
                                     </label>
                                     <input
                                         type="date"
@@ -2424,12 +2453,12 @@ export default function ProjectItemPage() {
 
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                                    Теги (Enter для добавления)
+                                    Tags (Enter to add)
                                 </label>
 
                                 <input
                                     type="text"
-                                    placeholder="Например: Backend, MongoDB"
+                                    placeholder="For example: Backend, Frontend"
                                     className="w-full px-5 py-3 border border-slate-300 rounded-2xl focus:border-indigo-500"
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && e.currentTarget.value.trim()) {
@@ -2481,7 +2510,7 @@ export default function ProjectItemPage() {
                                 onClick={closeCreateTaskModal}
                                 className="flex-1 py-4 text-slate-600 font-medium hover:bg-slate-100 rounded-2xl transition"
                             >
-                                Отмена
+                                Cancel
                             </button>
 
                             <button
@@ -2489,7 +2518,7 @@ export default function ProjectItemPage() {
                                 disabled={submittingTask}
                                 className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-2xl transition disabled:opacity-60"
                             >
-                                {submittingTask ? 'Создание...' : 'Создать задачу'}
+                                {submittingTask ? 'Creating...' : 'Create task'}
                             </button>
                         </div>
                     </div>
@@ -2652,8 +2681,8 @@ export default function ProjectItemPage() {
 
                                                     {(editTask.location.lat || editTask.location.lng) && !editTask.removeLocation && (
                                                         <span className="text-xs text-slate-500">
-                Current: {editTask.location.lat}, {editTask.location.lng}
-            </span>
+                                                            Current: {editTask.location.lat}, {editTask.location.lng}
+                                                        </span>
                                                     )}
                                                 </div>
                                             </div>
@@ -2718,7 +2747,7 @@ export default function ProjectItemPage() {
 
                                                 <input
                                                     type="text"
-                                                    placeholder="Example: Backend, MongoDB"
+                                                    placeholder="Example: Backend, Frontend"
                                                     className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-500"
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter' && e.currentTarget.value.trim()) {
@@ -3224,7 +3253,6 @@ export default function ProjectItemPage() {
                                             </div>
 
                                             <div className="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all">
-                                                {/* ROLE SELECT */}
                                                 <select
                                                     value={member.role}
                                                     disabled={
@@ -3247,7 +3275,6 @@ export default function ProjectItemPage() {
                                                     ))}
                                                 </select>
 
-                                                {/* REMOVE BUTTON */}
                                                 {canManageMembers && member.role !== 'owner' && (
                                                     <button
                                                         onClick={() => handleRemoveMember(member)}

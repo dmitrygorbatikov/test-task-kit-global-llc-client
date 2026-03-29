@@ -159,6 +159,7 @@ interface LoadColumnTasksParams {
     cursor?: string | null;
     reset?: boolean;
     statuses?: TaskStatus[];
+    search?: string;
 }
 
 export interface UpdateTaskPayload {
@@ -1252,6 +1253,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         const limit = params?.limit ?? 20;
         const reset = params?.reset ?? false;
         const statuses = params?.statuses ?? DEFAULT_ACTIVE_STATUSES;
+        const search = params?.search?.trim() ?? '';
 
         const state = get();
         const currentColumnState =
@@ -1310,6 +1312,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
                     limit,
                     cursor: cursor || undefined,
                     statuses: statuses.join(','),
+                    search: search || undefined,
                 },
             });
 
