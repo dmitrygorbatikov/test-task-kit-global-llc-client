@@ -15,6 +15,40 @@ const roleBadgeClasses: Record<string, string> = {
     member: 'bg-gray-100 text-gray-700',
 };
 
+function getErrorMessage(error: unknown, fallback: string): string {
+    if (typeof error === 'string') return error;
+
+    if (error && typeof error === 'object') {
+        const err = error as {
+            message?: string;
+            response?: {
+                data?: {
+                    message?: string | string[];
+                    error?: string;
+                };
+            };
+        };
+
+        if (Array.isArray(err.response?.data?.message)) {
+            return err.response?.data?.message.join(', ');
+        }
+
+        if (typeof err.response?.data?.message === 'string') {
+            return err.response.data.message;
+        }
+
+        if (typeof err.message === 'string') {
+            return err.message;
+        }
+
+        if (typeof err.response?.data?.error === 'string') {
+            return err.response.data.error;
+        }
+    }
+
+    return fallback;
+}
+
 export default function ProjectsPage() {
     const navigate = useNavigate();
 
@@ -22,6 +56,10 @@ export default function ProjectsPage() {
     const [newProjectName, setNewProjectName] = useState('');
     const [newProjectDescription, setNewProjectDescription] = useState('');
     const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+
+    const [createError, setCreateError] = useState<string | null>(null);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
+    const [pageInitError, setPageInitError] = useState<string | null>(null);
 
     const {
         projectList,
@@ -33,27 +71,61 @@ export default function ProjectsPage() {
         deleteProject,
     } = useProjectStore();
 
+    const loadProjects = async () => {
+        setPageInitError(null);
+
+        try {
+            await getProjectsList();
+        } catch (error) {
+            const message = getErrorMessage(
+                error,
+                'Failed to load projects. Please try again.',
+            );
+
+            setPageInitError(message);
+            console.error('Failed to load projects:', error);
+        }
+    };
+
     useEffect(() => {
-        getProjectsList().catch((err) => {
-            console.error('Failed to load projects:', err);
-        });
-    }, [getProjectsList]);
+        loadProjects();
+    }, []);
+
+    const resetCreateModal = () => {
+        setIsCreateModalOpen(false);
+        setNewProjectName('');
+        setNewProjectDescription('');
+        setCreateError(null);
+    };
+
+    const handleOpenCreateModal = () => {
+        setCreateError(null);
+        setIsCreateModalOpen(true);
+    };
 
     const handleCreateProject = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
 
-        if (!newProjectName.trim()) return;
+        const title = newProjectName.trim();
+        const description = newProjectDescription.trim();
+
+        if (!title) {
+            setCreateError('Project title is required.');
+            return;
+        }
+
+        setCreateError(null);
 
         try {
-            await createProject(
-                newProjectName.trim(),
-                newProjectDescription.trim() || undefined,
+            await createProject(title, description || undefined);
+            resetCreateModal();
+        } catch (error) {
+            const message = getErrorMessage(
+                error,
+                'Failed to create project. Please try again.',
             );
 
-            setNewProjectName('');
-            setNewProjectDescription('');
-            setIsCreateModalOpen(false);
-        } catch (error) {
+            setCreateError(message);
             console.error('Failed to create project:', error);
         }
     };
@@ -65,6 +137,8 @@ export default function ProjectsPage() {
     ) => {
         e.stopPropagation();
 
+        setDeleteError(null);
+
         const confirmed = window.confirm(
             `Are you sure you want to delete project "${projectTitle}"?`,
         );
@@ -75,11 +149,19 @@ export default function ProjectsPage() {
             setDeletingProjectId(projectId);
             await deleteProject(projectId);
         } catch (error) {
+            const message = getErrorMessage(
+                error,
+                `Failed to delete project "${projectTitle}". Please try again.`,
+            );
+
+            setDeleteError(message);
             console.error('Failed to delete project:', error);
         } finally {
             setDeletingProjectId(null);
         }
     };
+
+    const combinedListError = pageInitError || projectListError || null;
 
     if (projectListLoading && projectList.data.length === 0) {
         return (
@@ -95,14 +177,30 @@ export default function ProjectsPage() {
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
 
-                    {projectListError && (
-                        <p className="text-red-600 mt-2 text-sm">{projectListError}</p>
+                    {combinedListError && (
+                        <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+                            <p className="text-sm text-red-700">{combinedListError}</p>
+
+                            <button
+                                type="button"
+                                onClick={loadProjects}
+                                className="mt-3 inline-flex items-center rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+                            >
+                                Retry
+                            </button>
+                        </div>
+                    )}
+
+                    {deleteError && (
+                        <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+                            <p className="text-sm text-red-700">{deleteError}</p>
+                        </div>
                     )}
                 </div>
 
                 <button
                     type="button"
-                    onClick={() => setIsCreateModalOpen(true)}
+                    onClick={handleOpenCreateModal}
                     className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl font-semibold transition-all active:scale-95"
                 >
                     <Plus size={20} />
@@ -119,7 +217,10 @@ export default function ProjectsPage() {
                         return (
                             <div
                                 key={project._id}
-                                onClick={() => navigate(`/projects/${project._id}`)}
+                                onClick={() => {
+                                    if (isDeleting) return;
+                                    navigate(`/projects/${project._id}`);
+                                }}
                                 className="text-left bg-white p-6 rounded-2xl shadow hover:shadow-lg transition cursor-pointer border border-transparent hover:border-indigo-200"
                             >
                                 <div className="flex items-start justify-between gap-3 mb-3">
@@ -210,6 +311,12 @@ export default function ProjectsPage() {
                         </div>
 
                         <form onSubmit={handleCreateProject} className="p-8 space-y-6">
+                            {createError && (
+                                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+                                    <p className="text-sm text-red-700">{createError}</p>
+                                </div>
+                            )}
+
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     Project Title <span className="text-red-500">*</span>
@@ -217,7 +324,10 @@ export default function ProjectsPage() {
                                 <input
                                     type="text"
                                     value={newProjectName}
-                                    onChange={(e) => setNewProjectName(e.target.value)}
+                                    onChange={(e) => {
+                                        setNewProjectName(e.target.value);
+                                        if (createError) setCreateError(null);
+                                    }}
                                     required
                                     className="w-full px-5 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:border-indigo-500"
                                     placeholder="Enter project name"
@@ -230,9 +340,10 @@ export default function ProjectsPage() {
                                 </label>
                                 <textarea
                                     value={newProjectDescription}
-                                    onChange={(e) =>
-                                        setNewProjectDescription(e.target.value)
-                                    }
+                                    onChange={(e) => {
+                                        setNewProjectDescription(e.target.value);
+                                        if (createError) setCreateError(null);
+                                    }}
                                     rows={4}
                                     className="w-full px-5 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:border-indigo-500 resize-y"
                                     placeholder="Brief description of the project..."
@@ -242,11 +353,7 @@ export default function ProjectsPage() {
                             <div className="flex gap-4 pt-4">
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        setIsCreateModalOpen(false);
-                                        setNewProjectName('');
-                                        setNewProjectDescription('');
-                                    }}
+                                    onClick={resetCreateModal}
                                     className="flex-1 py-4 text-gray-600 font-medium hover:bg-gray-100 rounded-2xl transition-colors"
                                 >
                                     Cancel
@@ -255,7 +362,7 @@ export default function ProjectsPage() {
                                 <button
                                     type="submit"
                                     disabled={createProjectLoading || !newProjectName.trim()}
-                                    className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold rounded-2xl transition-colors"
+                                    className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold rounded-2xl transition-colors disabled:cursor-not-allowed"
                                 >
                                     {createProjectLoading ? 'Creating...' : 'Create Project'}
                                 </button>
