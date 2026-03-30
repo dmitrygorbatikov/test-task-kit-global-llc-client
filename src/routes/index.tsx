@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from './ProtectedRoute';
 import { GuestRoute } from './GuestRoute';
 import AppLayout from './AppLayout';
@@ -7,7 +7,6 @@ import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
 import ProjectsPage from '../pages/ProjectsPage';
 import ProjectItemPage from '../pages/ProjectItemPage';
-import NotFoundPage from '../pages/NotFoundPage';
 
 export const router = createBrowserRouter([
     {
@@ -29,9 +28,12 @@ export const router = createBrowserRouter([
             },
         ],
     },
-
+    {
+        path: '/',
+        element: <Navigate to="/projects" replace />,
+    },
     {
         path: '*',
-        element: <NotFoundPage />,
+        element: <Navigate to="/projects" replace />,
     },
 ]);

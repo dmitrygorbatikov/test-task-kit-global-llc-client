@@ -7,7 +7,7 @@ export default function AppLayout() {
 
     const handleLogout = async () => {
         try {
-            await logout();
+            logout();
         } catch (e) {
             console.error('Logout error:', e);
         } finally {
